@@ -49,23 +49,23 @@
   </PropertyGroup>
   <ItemGroup>
     <Reference Include="Base32Encoder, Version=1.0.0.0, Culture=neutral, processorArchitecture=MSIL">
-      <HintPath>..\packages\CSharp2nem.1.0.36\lib\net452\Base32Encoder.dll</HintPath>
+      <HintPath>..\packages\CSharp2nem.1.0.53\lib\net452\Base32Encoder.dll</HintPath>
       <Private>True</Private>
     </Reference>
     <Reference Include="BouncyCastle.Crypto, Version=1.8.1.0, Culture=neutral, PublicKeyToken=0e99375e54769942">
-      <HintPath>..\packages\CSharp2nem.1.0.36\lib\net452\BouncyCastle.Crypto.dll</HintPath>
+      <HintPath>..\packages\CSharp2nem.1.0.53\lib\net452\BouncyCastle.Crypto.dll</HintPath>
       <Private>True</Private>
     </Reference>
     <Reference Include="Chaos.NaCl, Version=0.1.0.0, Culture=neutral, processorArchitecture=MSIL">
-      <SpecificVersion>False</SpecificVersion>
-      <HintPath>..\..\..\GitHub\NemNotificationBot\NemNotificationBot\packages\CSharp2nem.1.0.36\lib\net452\Chaos.NaCl.dll</HintPath>
+      <HintPath>..\packages\CSharp2nem.1.0.53\lib\net452\Chaos.NaCl.dll</HintPath>
+      <Private>True</Private>
     </Reference>
-    <Reference Include="CSharp2nem, Version=1.0.30.0, Culture=neutral, processorArchitecture=MSIL">
-      <SpecificVersion>False</SpecificVersion>
-      <HintPath>..\..\..\GitHub\csharp2nem\NemApi\Wrapper\bin\Release\CSharp2nem.dll</HintPath>
+    <Reference Include="CSharp2nem, Version=1.0.40.0, Culture=neutral, processorArchitecture=MSIL">
+      <HintPath>..\packages\CSharp2nem.1.0.53\lib\net452\CSharp2nem.dll</HintPath>
+      <Private>True</Private>
     </Reference>
     <Reference Include="Newtonsoft.Json, Version=8.0.0.0, Culture=neutral, PublicKeyToken=30ad4fe6b2a6aeed, processorArchitecture=MSIL">
-      <HintPath>..\packages\CSharp2nem.1.0.36\lib\net452\Newtonsoft.Json.dll</HintPath>
+      <HintPath>..\packages\Newtonsoft.Json.8.0.1\lib\net45\Newtonsoft.Json.dll</HintPath>
       <Private>True</Private>
     </Reference>
     <Reference Include="System" />
@@ -90,16 +90,14 @@
     </Compile>
     <Compile Include="Tasks\RuleScanner.cs" />
     <Compile Include="Tasks\TaskRunner.cs" />
-    <Compile Include="Tasks\TxSummaryController.cs" />
-    <Compile Include="TxSummary.cs" />
+    <Compile Include="Controller\TxSummaryController.cs" />
+    <Compile Include="Model\TxSummary.cs" />
   </ItemGroup>
   <ItemGroup>
     <None Include="App.config">
       <SubType>Designer</SubType>
     </None>
-    <None Include="packages.config">
-      <SubType>Designer</SubType>
-    </None>
+    <None Include="packages.config" />
     <None Include="Properties\Settings.settings">
       <Generator>SettingsSingleFileGenerator</Generator>
       <LastGenOutput>Settings.Designer.cs</LastGenOutput>
