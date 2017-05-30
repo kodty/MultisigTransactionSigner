@@ -1,0 +1,7 @@
+# Add any directories, files, or patterns you don't want to be tracked by version control
+
+../.vs
+bin/
+obj/
+.vs/XEMSign/v14/.suo
+XEMSign/XEMSign.csproj.user
