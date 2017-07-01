@@ -23,7 +23,8 @@ namespace XEMSign
         {
             var privateKeys = ConfigurationManager.GetSection("accountsPrivate") as MyConfigSection;
 
-            Con.SetTestNet();
+            if (ConfigurationManager.AppSettings["network"] == "test") Con.SetTestNet();
+            else Con.SetMainnet();
 
             List<KeyLastCheckedPair> listOfCosigs = new List<KeyLastCheckedPair>();
 
@@ -64,7 +65,9 @@ namespace XEMSign
                     foreach (var t in transactions.data)
                     {
                         
-                        if (t.transaction.type != 4100 || pair.CheckedHash.Contains(t.meta.data)) continue;
+                        if (t.transaction.type != 4100 || t.transaction?.otherTrans?.type != 257 || pair.CheckedHash.Contains(t.meta.data)) continue;
+
+                        if (t.transaction.signer == pair.Acc.PublicKey.Raw) continue;
 
                         Console.WriteLine();
 

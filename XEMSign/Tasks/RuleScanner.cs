@@ -41,7 +41,8 @@ namespace XEMSign
 
         internal  bool ScanTxAgainstRuleSet(Transactions.TransactionData t, VerifiableAccount acc)
         {
-            Con.SetTestNet();
+            if (ConfigurationManager.AppSettings["network"] == "test") Con.SetTestNet();
+            else Con.SetMainnet();
 
             var multisigAccInfo = new AccountFactory(Con).FromPublicKey(t.transaction.otherTrans.signer);
 
