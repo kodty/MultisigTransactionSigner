@@ -183,7 +183,7 @@ namespace XEMSign
                                             ? tx.transaction.amount
                                             : tx.transaction.otherTrans.amount;
 
-                                if ((tx.transaction.mosaics ?? tx.transaction.otherTrans.mosaics) != null)
+                                if ((tx.transaction.mosaics ?? tx.transaction.otherTrans?.mosaics) != null)
                                 {
                                     foreach (var m in tx.transaction.mosaics ?? tx.transaction.otherTrans.mosaics)
                                     {
@@ -220,13 +220,14 @@ namespace XEMSign
                                     var q = t.transaction.otherTrans.mosaics[0].quantity;
 
                                     // get amount that should be paid out for the deposit
-                                    var a = long.Parse(ConfigurationManager.AppSettings["currency"]) / depositedAmount;
+                                    var a = Math.Ceiling(((decimal)depositedAmount / long.Parse(ConfigurationManager.AppSettings["cost"])) / (decimal)Math.Pow(10, 6 - mosaicDivisibility)) ;
 
                                     // if incorrect, fail
                                     valid = a == q ? true : false;
 
                                     if (!valid) Console.WriteLine("failed on transaction verification: amounts do not match");
                                 }
+                                else Console.WriteLine("failed on transaction verification: incorrect currency");
 
                             }, ConfigurationManager.AppSettings["namespace"], ConfigurationManager.AppSettings["ID"]).AsyncWaitHandle.WaitOne();
 
