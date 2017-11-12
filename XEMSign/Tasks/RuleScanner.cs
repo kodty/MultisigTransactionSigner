@@ -15,6 +15,9 @@ using Newtonsoft.Json;
 using Chaos.NaCl;
 using System.Net;
 using System.IO;
+using System.Security.Cryptography.X509Certificates;
+using System.Net.Security;
+using System.Text.RegularExpressions;
 
 namespace XEMSign
 {
@@ -153,170 +156,108 @@ namespace XEMSign
                 if(ConfigurationManager.AppSettings["ICOAccountPubKey"] != "")
                 {
                     valid = false;
-                
-                    var TransactionDataClient = new TransactionDataClient(Con);
-                                
+  
                     // get all incoming transactions to the ICO deposit account
-                    TransactionDataClient.BeginGetIncomingTransactions(ar2 => {
+                    var txs = GetTransactions(AddressEncoding.ToEncoded(Con.GetNetworkVersion(), new CSharp2nem.Model.AccountSetup.PublicKey(ConfigurationManager.AppSettings["ICOAccountPubKey"])), null);
 
-                        // fail if deposit hash not present in payout transaction
-                        if ((t.transaction.otherTrans == null ? t.transaction.message?.payload : t.transaction.otherTrans.message?.payload) != null)
+                    if ((t.transaction.type == 257 ? t.transaction.message?.payload : t.transaction.otherTrans?.message?.payload) != null)
+                        while (!txs.Exists(e => e.meta.hash.data == Encoding.UTF8.GetString(CryptoBytes.FromHexString((t.transaction.type == 257 ? t.transaction.message?.payload : t.transaction.otherTrans?.message?.payload)))))
                         {
-                            // find deposit transaction based on hash in message
-                            var tx = ar2.Content.data.Single(x => x.meta.hash.data == Encoding.UTF8.GetString(CryptoBytes.FromHexString((t.transaction.type == 257 ? t.transaction.message.payload : t.transaction.otherTrans.message.payload))));
+                            var tx = GetTransactions(AddressEncoding.ToEncoded(Con.GetNetworkVersion(), new CSharp2nem.Model.AccountSetup.PublicKey(ConfigurationManager.AppSettings["ICOAccountPubKey"])), txs[txs.Count - 1].meta.hash.data);
 
-                            // initiate mosaic client
-                            var mosaicClient = new NamespaceMosaicClient(Con);
+                            txs.AddRange(tx);
+                        }
+                    else
+                    {
+                        valid = false;
+                        Console.WriteLine("failed on transaction verification: missing message hash");
+                    }
+                    
+                    // fail if deposit hash not present in payout transaction
+                    if ((t.transaction.otherTrans == null ? t.transaction.message?.payload : t.transaction.otherTrans.message?.payload) != null)
+                    {
+                        // find deposit transaction based on hash in message
+                        var tx = txs.Single(x => x.meta.hash.data == Encoding.UTF8.GetString(CryptoBytes.FromHexString((t.transaction.type == 257 ? t.transaction.message.payload : t.transaction.otherTrans.message.payload))));
 
-                            var mosaicDivisibility = 0;
+                        // initiate mosaic client
+                        var mosaicClient = new NamespaceMosaicClient(Con);
 
+                        var mosaicDivisibility = 0;
+
+                        var mosaics = ConfigurationManager.GetSection("MosaicConfigElement") as MyMosaicConfigSection;
+
+                        foreach (MosaicConfigElement m in mosaics.Mosaics)
+                        {
                             // retrieve mosaic definition for rate calculation
                             mosaicClient.BeginGetMosaicsByNameSpace(ar3 =>
                             {
-                                if (ar3.Ex != null)
+                                foreach (var m2 in t.transaction.otherTrans.mosaics)
                                 {
-                                    Console.WriteLine(ar2.Ex);
-                                } // if no error, set mosaic divisibility
-                                else mosaicDivisibility = int.Parse(ar3.Content.Data[0].Mosaic.Properties[0].Value);
+                                    if (!(m2.mosaicId.namespaceId == m.MosaicNameSpace && m2.mosaicId.name == m.MosaicID)) continue;
 
-                                var depositedAmount = tx.transaction.type == 257
-                                            ? tx.transaction.amount
-                                            : tx.transaction.otherTrans.amount;
-
-                                if ((tx.transaction.mosaics ?? tx.transaction.otherTrans?.mosaics) != null)
-                                {
-                                    foreach (var m in tx.transaction.mosaics ?? tx.transaction.otherTrans.mosaics)
+                                    if (ar3.Ex != null)
                                     {
-                                        if (m.mosaicId.name == "xem" && m.mosaicId.namespaceId == "nem")
-                                        {
-                                            depositedAmount = m.quantity;
-                                        }
-                                    }
-                                }
+                                        Console.WriteLine(ar3.Ex);
+                                    } // if no error, set mosaic divisibility
+                                    else mosaicDivisibility = int.Parse(ar3.Content.Data[0].Mosaic.Properties[0].Value);
 
-                                // calculate based on pre-set currency denomination
-                                if (ConfigurationManager.AppSettings["currency"] == "USD")
-                                {
-                                    // fail if no mosaics present in ico payout transaction
-                                    if (t.transaction.otherTrans.mosaics != null )
+                                    var depositedAmount = Calculations.GetDepositedAmount(tx);
+
+                                    // calculate based on pre-set currency denomination
+                                    if (m.CostDenomination == "USD")
                                     {
-                                        // check if the mosaic quantity paid out is correct for the deposit
-                                        var amountValid = RateCalculation(depositedAmount, mosaicDivisibility) == t.transaction.otherTrans.mosaics[0].quantity;
-
-                                        // check the recipient of the payout is the signer of the deposit, fail if not.
-                                        if (amountValid && t.transaction.otherTrans.recipient == AddressEncoding.ToEncoded(Con.GetNetworkVersion(), new PublicKey(tx.transaction.otherTrans?.signer == null ? tx.transaction.signer : tx.transaction.otherTrans.signer)))
+                                        // fail if no mosaics present in ico payout transaction
+                                        if (t.transaction.otherTrans.mosaics != null)
                                         {
-                                            valid = true;
+                                            // check if the mosaic quantity paid out is correct for the deposit
+                                            var amountValid = Calculations.RateCalculation(depositedAmount, mosaicDivisibility, m) == m2.quantity;
 
+                                            // check the recipient of the payout is the signer of the deposit, fail if not.
+                                            if (amountValid && t.transaction.otherTrans.recipient == AddressEncoding.ToEncoded(Con.GetNetworkVersion(), new CSharp2nem.Model.AccountSetup.PublicKey(tx.transaction.otherTrans?.signer == null ? tx.transaction.signer : tx.transaction.otherTrans.signer))) continue;
+                                            else
+                                            {
+                                                Console.WriteLine("failed on transaction verification: amount or recipient is invalid");
+                                                valid = false;
+                                            }
                                         }
-                                        else Console.WriteLine("failed on transaction verification: amount or recipient is invalid");
+                                        else Console.WriteLine("failed on transaction verification: invalid or missing mosaic");
+
                                     }
-                                    else Console.WriteLine("failed on transaction verification: invalid or missing mosaic");
-                                    
+                                    else if (m.CostDenomination == "XEM")
+                                    {
+                                        // set mosaic amount paid out.
+                                        var q = m2.quantity;
+
+                                        // get amount that should be paid out for the deposit
+                                        var a = Calculations.BonusCalculation(m, Math.Ceiling((depositedAmount / decimal.Parse(m.MosaicCost)) / (decimal)Math.Pow(10, 6 - mosaicDivisibility)));
+
+                                        // if incorrect, fail
+                                        valid = a == q ? true : false;
+
+                                        if (!valid) Console.WriteLine("failed on transaction verification: amounts do not match");
+                                    }
+                                    else Console.WriteLine("failed on transaction verification: incorrect currency");
                                 }
-                                else if (ConfigurationManager.AppSettings["currency"] == "XEM")
-                                {
-                                    // set mosaic amount paid out.
-                                    var q = t.transaction.otherTrans.mosaics[0].quantity;
-
-                                    // get amount that should be paid out for the deposit
-                                    var a = Math.Ceiling(((decimal)depositedAmount / long.Parse(ConfigurationManager.AppSettings["cost"])) / (decimal)Math.Pow(10, 6 - mosaicDivisibility)) ;
-
-                                    // if incorrect, fail
-                                    valid = a == q ? true : false;
-
-                                    if (!valid) Console.WriteLine("failed on transaction verification: amounts do not match");
-                                }
-                                else Console.WriteLine("failed on transaction verification: incorrect currency");
-
-                            }, ConfigurationManager.AppSettings["namespace"], ConfigurationManager.AppSettings["ID"]).AsyncWaitHandle.WaitOne();
-
+                            }, m.MosaicNameSpace, m.MosaicID).AsyncWaitHandle.WaitOne();
                         }
-                        else Console.WriteLine("failed on transaction verification: missing hash");
-
-
-                    }, AddressEncoding.ToEncoded(Con.GetNetworkVersion(), new PublicKey(ConfigurationManager.AppSettings["ICOAccountPubKey"]))).AsyncWaitHandle.WaitOne();
+                    }
+                    else Console.WriteLine("failed on transaction verification: missing hash");
                 }
             }, t.transaction.otherTrans.signer).AsyncWaitHandle.WaitOne();
-            
+
             return valid;
         }
 
-        private static long RateCalculation(long xem, int divisibility)
+        private static List<Transactions.TransactionData> GetTransactions(string address, string hash = null)
         {
-            double rate = 0.0;
+            var txClient = new TransactionDataClient(Con);
 
-            UriBuilder uri = new UriBuilder()
-            {
-                Host = "api.coinmarketcap.com",
-                Path = "/v1/ticker/nem",
-                Query = "convert=USD"
-            };
 
-            var Con2 = new Connection(uri);
+            var txs = txClient.EndGetTransactions(txClient.BeginGetIncomingTransactions(address, hash));
 
-            var Http = (HttpWebRequest)WebRequest.Create(Con2.Uri.Uri.AbsoluteUri);
 
-            Http.Accept = "application/json";
-
-            var asyncResult = new ManualAsyncResult2();
-
-            Http.BeginGetResponse(asyncResult.WrapHandler(ar =>
-            {
-                try
-                {
-                    var response = Http.EndGetResponse(ar);
-
-                    Stream responseStream = response.GetResponseStream();
-
-                    var currencyData = JsonConvert.DeserializeObject<List<currenyData>>(new StreamReader(responseStream).ReadToEnd());
-
-                    rate = double.Parse(currencyData[0].price_usd);
-                }
-                catch (Exception ex)
-                {
-                    Console.WriteLine(ex);
-                }
-            }), null);
-
-            // wait for callback to complete
-            asyncResult.AsyncWaitHandle.WaitOne();
-
-            // calculate amount of xar to return
-            var amount = xem / (double.Parse(ConfigurationManager.AppSettings["cost"]) / rate);
-
-            // round up to nearest decimal based on mosaic divisibility
-            amount = (Math.Ceiling(amount / Math.Pow(10, 6 - divisibility)));
-           
-            return (long)BonusCalculation(amount);
+            return txs.data;
         }
-
-        private static double BonusCalculation(double amount)
-        {
-            return DateTime.Now < DateTime.Parse(ConfigurationManager.AppSettings["bonusDate1"]) ? amount + (amount / 100 * long.Parse(ConfigurationManager.AppSettings["bonus1"]))
-                 : DateTime.Now < DateTime.Parse(ConfigurationManager.AppSettings["bonusDate2"]) ? amount + (amount / 100 * long.Parse(ConfigurationManager.AppSettings["bonus2"]))
-                 : DateTime.Now < DateTime.Parse(ConfigurationManager.AppSettings["bonusDate3"]) ? amount + (amount / 100 * long.Parse(ConfigurationManager.AppSettings["bonus3"]))
-                 : amount;
-        }
-    }
-
-    public class currenyData
-    {
-        public string id { get; set; }
-        public string name { get; set; }
-        public string symbol { get; set; }
-        public string rank { get; set; }
-        public string price_usd { get; set; }
-        public string price_btc { get; set; }
-        [JsonProperty("24h_volume_usd")]
-        public string volumeusd { get; set; }
-        public string market_cap_usd { get; set; }
-        public string available_supply { get; set; }
-        public string total_supply { get; set; }
-        public string percent_change_1h { get; set; }
-        public string percent_change_24h { get; set; }
-        public string percent_change_7d { get; set; }
-        public string last_updated { get; set; }
-    }
+    } 
 }
 

@@ -53,35 +53,44 @@ namespace XEMSign
                         var client = new TransactionDataClient(Con);
 
                         client.BeginGetUnconfirmedTransactions(ar => {
-                            if (pair.CheckedHash.Count > 0 && ar.Content.data.Count > 0)
+                            try {
+
+                                if (pair.CheckedHash.Count > 0 && ar.Content.data.Count > 0)
+                                {
+                                    pair.CheckedHash.RemoveAll(e => ar.Content.data.All(i => e != i.meta.data));
+                                }
+
+
+                                foreach (var t in ar.Content.data)
+                                {
+
+                                    if (t.transaction.type != 4100 || t.transaction?.otherTrans?.type != 257 || pair.CheckedHash.Contains(t.meta.data)) continue;
+
+                                    if (t.transaction.signer == pair.Acc.PublicKey.Raw) continue;
+
+                                    Console.WriteLine();
+
+                                    Console.WriteLine("checking transaction: \n" + t.meta.data);
+
+                                    pair.CheckedHash.Add(t.meta.data);
+
+                                    Console.WriteLine("checked");
+
+                                    if (new RuleScanner().ScanTxAgainstRuleSet(t))
+                                        SignTransaction(
+                                            acc: pair.Acc,
+                                            t: t,
+                                            multisigAcc: AddressEncoding.ToEncoded(
+                                                network: Con.GetNetworkVersion(),
+                                                publicKey: new PublicKey(t.transaction.otherTrans.signer)));
+                                }
+                            }
+                            catch (Exception ex)
                             {
-                                pair.CheckedHash.RemoveAll(e => ar.Content.data.All(i => e != i.meta.data));
+                                Console.WriteLine(ex);
                             }
 
-
-                            foreach (var t in ar.Content.data)
-                            {
-
-                                if (t.transaction.type != 4100 || t.transaction?.otherTrans?.type != 257 || pair.CheckedHash.Contains(t.meta.data)) continue;
-
-                                if (t.transaction.signer == pair.Acc.PublicKey.Raw) continue;
-
-                                Console.WriteLine();
-
-                                Console.WriteLine("checking transaction: \n" + t.meta.data);
-
-                                pair.CheckedHash.Add(t.meta.data);
-
-                                Console.WriteLine("checked");
-
-                                if (new RuleScanner().ScanTxAgainstRuleSet(t))
-                                    SignTransaction(
-                                        acc: pair.Acc,
-                                        t: t,
-                                        multisigAcc: AddressEncoding.ToEncoded(
-                                            network: 0x90,
-                                            publicKey: new PublicKey(t.transaction.otherTrans.signer)));
-                            }
+                            
                         },pair.Acc.Address.Encoded).AsyncWaitHandle.WaitOne();          
                     }
                     catch (Exception e)
@@ -102,29 +111,38 @@ namespace XEMSign
             try
             {
                   acc.BeginSignatureTransactionAsync(ar =>{
-
-                      if (ar.Content.Code == 1)
-                      {
-                          var sum = new TxSummary()
+                     
+                      try {
+                         
+                          if (ar.Content.Code == 1)
                           {
-                              AccAddress = multisigAcc,
-                              DateOfTx = DateTime.Now,
-                              Amount = t.transaction.otherTrans.amount
-                          };
+                              var sum = new TxSummary()
+                              {
+                                  AccAddress = multisigAcc,
+                                  DateOfTx = DateTime.Now,
+                                  Amount = t.transaction.otherTrans.amount
+                              };
 
-                          TxSummaryController.AddSummaryForAccount(sum);
+                              TxSummaryController.AddSummaryForAccount(sum);
+                          }
+                          else Console.WriteLine(ar.Content.Code);
+                          Console.WriteLine(ar.Content.Message);
+                          Console.WriteLine();
+                          Console.WriteLine();
                       }
-
-                      Console.WriteLine(ar.Content.Message);
-                      Console.WriteLine();
-                      Console.WriteLine();
+                      catch (Exception ex)
+                      {
+                          Console.WriteLine(ex);
+                      }
+                      
 
                   }, new MultisigSignatureTransactionData
                   {
                       Deadline = int.Parse(ConfigurationManager.AppSettings["deadline"]) == 0
                       ? 82800 : int.Parse(ConfigurationManager.AppSettings["deadline"]),
                       TransactionHash = t.meta.data,
-                      MultisigAddress = new Address(multisigAcc)
+                      MultisigAddress = new Address(multisigAcc),
+                    
 
                   }).AsyncWaitHandle.WaitOne();
                  
